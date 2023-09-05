@@ -1,0 +1,1859 @@
+---
+format:
+   revealjs:
+     slide-number: true
+     footer: "&copy; 2023 Eli Lilly and Company"
+     view-distance: 100
+     mobile-view-distance: 100
+---
+
+##
+
+```{r, include = FALSE, echo = FALSE}
+set.seed(0)
+suppressPackageStartupMessages({
+  library(targets)
+})
+knitr::opts_chunk$set(
+  cache = FALSE,
+  comment = "#>",
+  fig.width = 10, 
+  fig.height = 5
+)
+```
+
+<style>
+.reveal .tiny {
+  display: inline-block;
+  font-size: 0.5em;
+  line-height: 1.0em;
+  vertical-align: top;
+}
+.reveal .medium {
+  display: inline-block;
+  font-size: 0.75em;
+  line-height: 1.5em;
+  vertical-align: top;
+}
+</style>
+
+<center>
+<br>
+<h3>Leveraging {targets} and {crew} to simulate clinical trials</h3>
+<img src="./images/title.png" height="400px">
+<br>
+<h4>Will Landau</h4>
+</center>
+
+
+## Agenda
+
+1. Clinical trial design and simulation
+1. Example simulation project
+1. `targets`
+1. `crew`
+1. Q & A
+
+## 
+
+<center>
+<img src="./images/pharma.png" height="625px">
+</center>
+
+## Trial design: optimization and balance
+
+<center>
+<img src="./images/design.png" height="500px">
+</center>
+
+## Clinical trial simulation {.smaller}
+
+<center>
+<img src="./images/simulation.png" height="550px">
+</center>
+
+## Example trial and simulation {.smaller}
+
+<center>
+<img src="./images/trial.png" height="300px">
+</center>
+
+* Randomized, controlled, parallel, non-adaptive phase 3 study.
+* Randomize half the patients to drug, half to placebo.
+* The main outcome (primary endpoint) is continuous, and a higher score is healthier.
+* Declare efficacy if the p-value is < 0.05 from a 1-sided hypothesis test.
+* <span style="color: blue">**Goal of the simulation: determine minimum number of patients required to demonstrate superiority to placebo with 90% power and Type I error less than 5%.**</span>
+
+## Simulation code: R functions
+
+<center>
+<img src="./images/functions.png" height="275px">
+</center>
+
+::: {style="font-size: 60%;"}
+
+* A data analysis is a sequence of transformations.
+* Functions are great tools to express those transformations.
+* `simulate_dataset()` accepts a simulation scenario (with sample size and assumed efficacy level) and returns a simulated dataset.
+* `analyze_dataset()` accepts a simulated dataset and returns a one-row data frame with a p-value (and optionally posterior probabilities, etc.).
+* `simulate_trial()` chains `simulate_dataset()` and `analyze_dataset()` together.
+
+:::
+
+## `simulate_dataset()`
+
+:::: {.columns style="font-size: 60%;"}
+
+::: {.column width="55%"}
+
+```{r, eval = FALSE, echo = TRUE}
+simulate_dataset <- function(
+  mean_response_drug,
+  sample_size
+) {
+  patient_id <- paste0(
+    "patient_",
+    sample.int(n = 1e9, size = sample_size, replace = FALSE)
+  )
+  study_arm <- rep(
+    x = c("drug", "placebo"),
+    each = sample_size / 2
+  )
+  response_drug <- rnorm(
+    n = sample_size / 2,
+    mean = mean_response_drug,
+    sd = 4.25
+  )
+  response_placebo <- rnorm(
+    n = sample_size / 2,
+    mean = 1,
+    sd = 4.25
+  )
+  tibble(
+    patient_id = patient_id,
+    study_arm = study_arm,
+    response = c(response_drug, response_placebo)
+  )
+}
+```
+
+:::
+
+::: {.column width="45%"}
+
+```{r, eval = FALSE, echo = TRUE}
+library(tibble)
+dataset <- simulate_dataset(
+  mean_response_drug = 2,
+  sample_size = 800
+)
+dataset
+#> # A tibble: 800 × 3
+#>    patient_id        study_arm response
+#>    <chr>             <chr>        <dbl>
+#>  1 patient_545860557 drug         0.950
+#>  2 patient_68238256  drug         0.524
+#>  3 patient_197379753 drug         7.05 
+#>  4 patient_577319868 drug        -1.46 
+#>  5 patient_291086621 drug         8.60 
+#>  6 patient_851227638 drug        -0.202
+#>  7 patient_96276021  drug        13.2  
+#>  8 patient_2032492   drug        -5.26 
+#>  9 patient_439198057 drug        -2.48 
+#> 10 patient_947918099 drug         6.99 
+#> # ℹ 790 more rows
+#> # ℹ Use `print(n = ...)` to see more rows
+```
+
+:::
+
+::::
+
+## `analyze_dataset()`
+
+:::: {.columns style="font-size: 82%;"}
+
+::: {.column width="63%"}
+
+```{r, eval = FALSE, echo = TRUE}
+analyze_dataset <- function(dataset) {
+  dataset %>%
+    mutate(
+      study_arm = factor(
+        study_arm,
+        levels = c("placebo", "drug")
+      )
+    ) %>%
+    lm(formula = response ~ study_arm) %>%
+    summary() %>%
+    coefficients() %>%
+    as.data.frame() %>%
+    filter(grepl("^study_arm", rownames(.))) %>%
+    mutate(
+      p_value = pnorm(
+        q = `t value`,
+        lower.tail = FALSE
+      )
+    ) %>%
+    pull(p_value) %>%
+    tibble(p_value = .)
+}
+```
+
+:::
+
+::: {.column width="37%"}
+
+```{r, echo = TRUE, eval = FALSE}
+library(dplyr)
+analyze_dataset(dataset)
+#> # A tibble: 1 × 1
+#>   p_value
+#>     <dbl>
+#> 1  0.0169
+```
+
+:::
+
+::::
+
+## `simulate_trial()`
+
+:::: {.columns style="font-size: 79%;"}
+
+::: {.column width="61%"}
+
+```{r, eval = FALSE, echo = TRUE}
+simulate_trial <- function(
+  mean_response_drug,
+  sample_size
+) {
+  dataset <- simulate_dataset(
+    mean_response_drug = mean_response_drug,
+    sample_size = sample_size
+  )
+  analyze_dataset(dataset)
+}
+```
+
+:::
+
+::: {.column width="39%"}
+
+```{r, echo = TRUE, eval = FALSE}
+simulate_trial(
+  mean_response_drug = 2,
+  sample_size = 800
+)
+#> # A tibble: 1 × 1
+#>   p_value
+#>     <dbl>
+#> 1  0.0208
+```
+
+:::
+
+::::
+
+## Scenarios {.smaller}
+
+<center>
+<img src="./images/scenarios.png" height="225px">
+</center>
+
+:::: {.columns}
+
+::: {.column}
+
+### Procedure
+
+* Use `simulate_trial()` to simulate thousands of replications of each scenario (row above).
+* Within each scenario, calculate the proportion of replications declared efficacy (p-value < 0.05).
+
+:::
+
+::: {.column}
+
+### Goals
+
+1. Determine the lowest sample size with power $\ge$ 90% and type 1 error < 5%.
+2. Manage the computational demands of large simulations.
+
+:::
+
+::::
+
+## A reproducible analysis pipeline tool
+
+<center>
+<img src="./images/targets.png" height="500px">
+</center>
+
+## Demanding computation in R: simulation and beyond {.smaller}
+
+* **Clinical trial simulation**
+* Bayesian data analysis: Stan, JAGS, NIMBLE, `greta`, `SBC`
+* Network meta-analysis
+* PK/PD: `nlmixr`, `mrgsolve`
+* Statistical genomics
+* Machine learning: `keras`, `tensorflow`, `torch`, `tidymodels`
+* Permutation tests
+* Database queries: `DBI`
+* Big data ETL
+
+## Typical notebook-based simulation
+
+![](./images/notebook-start.png)
+
+## Messy reality: managing data
+
+![](./images/notebook-end.png)
+
+## Messy reality: managing change
+
+![](./images/notebook-dilemma.png)
+
+## Make-like pipeline tools {.smaller}
+
+<center>
+<img src="./images/graph1.png" height="375px">
+</center>
+* Orchestrate moving parts.
+* Skip up-to-date results.
+* Scale the computation.
+* Manage output data.
+
+## `targets` {.smaller}
+
+![](./images/logo-tweet.png)
+
+* Designed for R.
+* Encourages good function-oriented programming habits.
+* Automatic dependency detection.
+* Behind-the-scenes data management.
+* Distributed computing.
+
+## Resources {.smaller}
+
+* Get started in four minutes: <https://vimeo.com/700982360>
+* Example project: <https://github.com/wlandau/targets-four-minutes>
+* Documentation website: <https://docs.ropensci.org/targets/>
+* User manual: <https://books.ropensci.org/targets/>
+
+[![](./images/video.png)](https://vimeo.com/700982360)
+
+## Get started with `targets`
+
+```{r, eval = FALSE, echo = TRUE}
+fs::dir_tree()
+#> .
+#> ├── _targets.R # Create with use_targets() and then modify by hand.
+#> ├── R
+#> │   ├── analyze_dataset.R     # Write completely by hand.
+#> │   ├── simulate_dataset.R    # Write completely by hand.
+#> │   └── simulate_trial.R      # Write completely by hand.
+```
+
+<br>
+
+::: {style="font-size: 60%;"}
+
+1. Write functions that produce datasets, models, and summaries.
+2. Call `use_targets()` to generate code files for `targets`.
+3. Edit `_targets.R` by hand to define a test pipeline (start small).
+4. Use `tar_manifest()` and `tar_visnetwork()` to inspect the pipeline.
+5. Use `tar_make()` to run the pipeline.
+6. Inspect the results with `tar_read()` or `tar_load()`.
+7. Scale up the pipeline from the small test case.
+
+:::
+
+## `_targets.R` file
+
+:::: {.columns style="font-size:85%"}
+
+::: {.column width="50%"}
+
+```{r, eval = FALSE, echo = TRUE}
+library(targets)
+
+tar_option_set(
+  packages = c("dplyr", "tibble")
+)
+
+tar_source()
+
+list(
+  tar_target(
+    name = simulations_scenario_1,
+    command = simulate_trial(
+      mean_response_drug = 2,
+      sample_size = 700
+    )
+  ),
+```
+
+:::
+
+::: {.column width="50%"}
+
+```{r, eval = FALSE, echo = TRUE, attr.source = '.numberLines startFrom="17"'}
+  tar_target(
+    name = simulations_scenario_2,
+    command = simulate_trial(
+      mean_response_drug = 2,
+      sample_size = 800
+    )
+  ),
+
+  tar_target(
+    name = results,
+    command = bind_rows(
+      simulations_scenario_1,
+      simulations_scenario_2
+    )
+  )
+)
+```
+
+:::
+
+::::
+
+## Inspect the pipeline
+
+::: {style="font-size:80%"}
+
+```{r, eval = FALSE, echo = TRUE}
+tar_manifest()
+#> # A tibble: 3 × 2
+#>   name                   command                                
+#>   <chr>                  <chr>                                  
+#> 1 simulations_scenario_1 "simulate_trial(mean_response_drug = 2…
+#> 2 simulations_scenario_2 "simulate_trial(mean_response_drug = 2…
+#> 3 results                "bind_rows(simulations_scenario_1, sim…
+
+tar_outdated()
+#> [1] "simulations_scenario_1" "simulations_scenario_2"
+#> [3] "results" 
+
+tar_visnetwork()
+```
+
+<center>
+<img src="./images/graph2.png" height="300px">
+</center>
+
+:::
+
+
+## Run the pipeline
+
+::: {style="font-size:90%"}
+
+```{r, eval = FALSE, echo = TRUE}
+tar_make()
+#> ▶ start target simulations_scenario_1
+#> ● built target simulations_scenario_1 [0.118 seconds]
+#> ▶ start target simulations_scenario_2
+#> ● built target simulations_scenario_2 [0.009 seconds]
+#> ▶ start target results
+#> ● built target results [0.001 seconds]
+#> ▶ end pipeline [0.209 seconds]
+```
+
+### Results in the data store
+
+:::: {.columns}
+
+::: {.column width="40%"}
+
+```{r, echo = TRUE, eval = FALSE}
+tar_read(results)
+#> # A tibble: 2 × 1
+#>   p_value
+#>     <dbl>
+#> 1  0.0236
+#> 2  0.0716
+```
+
+:::
+
+::: {.column width="60%"}
+
+```{r, eval = FALSE, echo = TRUE}
+fs::dir_tree()
+#> ├── _targets
+#> │   ├── meta
+#> │   │   ├── meta
+#> │   │   ├── process
+#> │   │   └── progress
+#> │   ├── objects
+#> │   │   ├── results
+#> │   │   ├── simulations_scenario_1
+#> │   │   └── simulations_scenario_2
+#> │   └── user
+```
+
+:::
+
+::::
+
+:::
+
+## Change a command
+
+:::: {.columns style="font-size:70%"}
+
+::: {.column width="40%"}
+
+```{r, eval = FALSE, echo = TRUE, `code-line-numbers`="12"}
+# _targets.R file:
+library(targets)
+tar_option_set(
+  packages = c("dplyr", "tibble")
+)
+tar_source()
+list(
+  tar_target(
+    name = simulations_scenario_1,
+    command = simulate_trial(
+      mean_response_drug = 2,
+      sample_size = 750 # changed
+    )
+  )
+```
+
+:::
+
+::: {.column width="60%"}
+
+```{r, eval = FALSE, echo = TRUE}
+tar_visnetwork()
+```
+
+<center>
+<img src="./images/graph1.png" height="300px">
+</center>
+
+```{r, eval = FALSE, echo = TRUE}
+tar_outdated()
+#> [1] "simulations_scenario_1" "results" 
+
+tar_make()
+#> ▶ start target simulations_scenario_1
+#> ● built target simulations_scenario_1 [0.057 seconds]
+#> ✔ skip target simulations_scenario_2
+#> ▶ start target results
+#> ● built target results [0.001 seconds]
+#> ▶ end pipeline [0.137 seconds]
+```
+
+:::
+
+::::
+
+
+## Change a function
+
+:::: {.columns style="font-size:60%"}
+
+::: {.column width="40%"}
+
+```{r, eval = FALSE, echo = TRUE, `code-line-numbers`="6"}
+# R/analyze_dataset.R file:
+analyze_dataset <- function(dataset) {
+  dataset %>%
+    # ... unchanged code ...
+    mutate(
+      p_value = pt( # Use Student t.
+        q = `t value`,
+        df = 18.37 # degrees of freedom
+        lower.tail = FALSE
+      )
+    ) %>%
+    pull(p_value) %>%
+    tibble(p_value = .)
+}
+```
+
+:::
+
+::: {.column width="60%"}
+
+```{r, eval = FALSE, echo = TRUE}
+tar_visnetwork()
+```
+
+<center>
+<img src="./images/graph4.png" height="250px">
+</center>
+
+```{r, eval = FALSE, echo = TRUE}
+tar_outdated()
+#> [1] "simulations_scenario_1" "simulations_scenario_2"
+#> [3] "results" 
+
+tar_make()
+#> ▶ start target simulations_scenario_1
+#> ● built target simulations_scenario_1 [0.055 seconds]
+#> ▶ start target simulations_scenario_2
+#> ● built target simulations_scenario_2 [0.009 seconds]
+#> ▶ start target results
+#> ● built target results [0 seconds]
+#> ▶ end pipeline [0.144 seconds]
+```
+
+:::
+
+::::
+
+## Evidence of reproducibility
+
+```{r, eval = FALSE, echo = TRUE}
+tar_make()
+#> ✔ skip target simulations_scenario_1
+#> ✔ skip target simulations_scenario_2
+#> ✔ skip target results
+#> ✔ skip pipeline [0.04 seconds]
+
+tar_outdated()
+#> character(0)
+
+tar_visnetwork()
+```
+
+<center>
+<img src="./images/graph3.png" height="350px">
+</center>
+
+
+## Extending `targets` and scaling out
+
+<center>
+<img src="./images/targetopia.png" height="500px">
+</center>
+
+## Cloud storage
+
+:::: {.columns style="font-size:70%"}
+
+::: {.column width="50%"}
+
+```{r, eval = FALSE, echo = TRUE, `code-line-numbers`="6-13"}
+# _targets.R file:
+library(targets)
+
+tar_option_set(
+  packages = c("dplyr", "tibble"),
+  repository = "aws",
+  resources = tar_resources(
+    aws = tar_resources_aws(
+      bucket = "YOUR_BUCKET",
+      prefix = "YOUR_PROJECT_NAME"
+    )
+  ),
+  cue = tar_cue(file = FALSE) # optional
+)
+
+tar_source()
+
+# More code below...
+```
+
+:::
+
+::: {.column width="50%"}
+
+```{r, eval = FALSE, echo = TRUE}
+# R console on a different computer:
+tar_meta_download()
+tar_read(results)
+#> # A tibble: 2 × 1
+#>   p_value
+#>     <dbl>
+#> 1  0.0236
+#> 2  0.0716
+```
+
+:::
+
+::::
+
+::: {style="font-size:65%"}
+
+* Store target data and metadata on Amazon S3 or Google Cloud Storage.
+* Benefits:
+    1. Store less data locally.
+    2. Inspect results on a different computer.
+    3. Track history.
+* Details: <https://books.ropensci.org/targets/cloud-storage.html>
+
+:::
+
+## Target factories {.smaller}
+
+* A target factory is a reusable function that creates target objects.
+* Usually requires metaprogramming: <http://adv-r.had.co.nz/Computing-on-the-language.html#substitute>
+
+```{r, eval = FALSE, echo = TRUE}
+#' @title Example target factory in an R package.
+#' @export
+#' @description A target factory to analyze data.
+#' @return A list of 3 target objects to:
+#'   1. Track the file for changes,
+#'   2. Read the data in the file, and
+#'   3. Analyze the data.
+#' @param File Character of length 1, path to the file.
+target_factory <- function(file) {
+  list(
+    tar_target_raw("file", file, format = "file", deployment = "main"),
+    tar_target_raw("data", quote(read_data(file)), format = "fst_tbl", deployment = "main"),
+    tar_target_raw("model", quote(run_model(data)), format = "qs")
+  )
+}
+```
+
+## Target factories simplify pipelines
+
+<br>
+
+```{r, eval = FALSE, echo = TRUE}
+# _targets.R
+library(targets)
+library(yourExamplePackage)
+list(
+  target_factory("data.csv")
+)
+```
+
+<br>
+
+```{r, eval = FALSE, echo = TRUE}
+# R console
+tar_manifest()
+#> # A tibble: 3 x 2
+#>   name  command          
+#>   <chr> <chr>            
+#> 1 file  "\"data.csv\""   
+#> 2 data  "read_data(file)"           
+#> 3 model "run_model(data)"
+```
+
+
+## Example: literate programming {.smaller}
+
+<center>
+<img src="./images/quarto-hex.png" height="350px">
+</center>
+
+* Goal: do the hard computation upstream, then show the results in downstream literate programming documents using `tar_read()` and `tar_load()`.
+* `tar_quarto()` and `tar_render()` render documents as targets in the pipeline.^[`tar_quarto()` can also render entire Quarto projects.]
+
+## Example `report.qmd`
+
+<br>
+
+````{verbatim, echo = TRUE}
+---
+title: "Results"
+format: html
+---
+
+```{r}
+library(targets)
+tar_read(results)
+```
+````
+
+## Quarto in the `_targets.R` file
+
+:::: {.columns style="font-size:85%"}
+
+::: {.column width="50%"}
+
+```{r, eval = FALSE, echo = TRUE}
+library(targets)
+library(tarchetypes)
+
+tar_option_set(
+  packages = c("dplyr", "tibble")
+)
+
+tar_source()
+
+list(
+  tar_target(
+    name = simulations_scenario_1,
+    command = simulate_trial(
+      mean_response_drug = 2,
+      sample_size = 700
+    )
+  ),
+```
+
+:::
+
+::: {.column width="50%"}
+
+```{r, eval = FALSE, echo = TRUE, attr.source = '.numberLines startFrom="18"'}
+  tar_target(
+    name = simulations_scenario_2,
+    command = simulate_trial(
+      mean_response_drug = 2,
+      sample_size = 800
+    )
+  ),
+
+  tar_target(
+    name = results,
+    command = bind_rows(
+      simulations_scenario_1,
+      simulations_scenario_2
+    )
+  ),
+  
+  tar_quarto(report, "report.qmd")
+)
+```
+
+:::
+
+::::
+
+
+## Run the report in the pipeline
+
+:::: {.columns style="font-size:70%"}
+
+::: {.column width="60%"}
+
+```{r, eval = FALSE, echo = TRUE}
+tar_visnetwork()
+```
+
+<center>
+<img src="./images/graph-quarto.png" height="250px">
+</center>
+
+```{r, eval = FALSE, echo = TRUE}
+tar_outdated()
+#> [1] "report"
+
+tar_make()
+#> ✔ skip target simulations_scenario_1
+#> ✔ skip target simulations_scenario_2
+#> ✔ skip target results
+#> ▶ start target report
+#> ● built target report [1.808 seconds]
+#> ▶ end pipeline [1.91 seconds]
+```
+
+:::
+
+::: {.column width="40%"}
+
+```{r, eval = FALSE, echo = TRUE}
+browseURL("report.html")
+```
+
+<center>
+<img src="./images/report-html.png" height="300px">
+</center>
+
+:::
+
+::::
+
+## Scale out with `tar_map_rep()` {.smaller}
+
+<center>
+<img src="./images/scenarios.png" height="275px">
+</center>
+
+* Need to compare different sample sizes and different efficacy scenarios.
+* Need thousands of simulation replications to estimate operating characteristics (power, type 1 error).
+* The `targets` package supports flexible static branching and dynamic branching.
+* `tarchetypes::tar_map_rep()` is a target factory that uses static branching for scenarios and dynamic branching for replications within scenarios.  
+
+## Scaled out `_targets.R` file
+
+:::: {.columns style="font-size:65%"}
+
+::: {.column width="48%"}
+
+```{r, eval = FALSE, echo = TRUE}
+library(targets)
+library(tarchetypes)
+library(tibble)
+
+tar_option_set(
+  packages = c("dplyr", "tibble")
+)
+
+scenarios <- tribble(
+  ~efficacy, ~mean_response_drug, ~sample_size,
+  "strong",   2,                   700,
+  "strong",   2,                   800,
+  "null",     1,                   700,
+  "null",     1,                   800
+)
+
+tar_source()
+```
+
+:::
+
+::: {.column width="52%"}
+
+```{r, eval = FALSE, echo = TRUE, attr.source = '.numberLines startFrom="18"'}
+list(
+  tar_map_rep(
+    name = simulations,
+    command = simulate_trial(
+      mean_response_drug = mean_response_drug,
+      sample_size = sample_size
+    ),
+    values = scenarios,
+    batches = 25, # branch targets per scenario
+    reps = 40, # reps per branch target,
+    names = all_of(c("efficacy", "sample_size")),
+    columns = all_of(c("efficacy", "sample_size"))
+  ),
+
+  tar_target(
+    name = results,
+    command = simulations %>%
+      group_by(efficacy, sample_size) %>%
+      summarize(success = mean(p_value < 0.05))
+  ),
+
+  tar_quarto(report, "report.qmd")
+)
+```
+
+:::
+
+::::
+
+## Branching structure {.smaller}
+
+```{r, eval = FALSE, echo = TRUE}
+tar_visnetwork()
+```
+
+<center>
+<img src="./images/graph-scaled.png" height="400px">
+</center>
+
+* Each square "pattern" target is a dynamic target with a simulation scenario.
+* Each simulation scenario has 25 dynamic branches.
+* Each dynamic branch runs 40 simulation replications.
+
+## Run the scaled out pipeline
+
+```{r, eval = FALSE, echo = TRUE}
+tar_make()
+#> ▶ start target simulations_batch
+#> ● built target simulations_batch [0.001 seconds]
+#> ▶ start branch simulations_strong_700_81ce2d93
+#> ● built branch simulations_strong_700_81ce2d93 [0.16 seconds]
+#> ▶ start branch simulations_strong_700_4d5726ca
+#> ● built branch simulations_strong_700_4d5726ca [0.147 seconds]
+#> ...
+#> ▶ start target simulations
+#> ● built target simulations [0.003 seconds]
+#> ▶ start target results
+#> ● built target results [0.004 seconds]
+#> ▶ start target report
+#> ● built target report [1.742 seconds]
+#> ▶ end pipeline [19.171 seconds]
+```
+
+## Aggregated simulations
+
+::: {style="font-size: 90%"}
+
+```{r, eval = FALSE, echo = TRUE}
+tar_read(simulations)
+#> # A tibble: 4,000 × 7
+#>    p_value efficacy sample_size tar_batch tar_rep    tar_seed tar_group
+#>      <dbl> <chr>          <dbl>     <int>   <int>       <int>     <int>
+#>  1 0.00436 strong           700         1       1  1242392391         3
+#>  2 0.00383 strong           700         1       2  1005013755         3
+#>  3 0.00468 strong           700         1       3   848869470         3
+#>  4 0.00932 strong           700         1       4   407471040         3
+#>  5 0.0131  strong           700         1       5  2136134101         3
+#>  6 0.00887 strong           700         1       6 -1329548112         3
+#>  7 0.00481 strong           700         1       7  1808542408         3
+#>  8 0.0207  strong           700         1       8  1569885781         3
+#>  9 0.00588 strong           700         1       9 -1140470982         3
+#> 10 0.0709  strong           700         1      10    89908551         3
+#> # ℹ 3,990 more rows
+#> # ℹ Use `print(n = ...)` to see more rows
+```
+
+:::
+
+## Results
+
+```{r, eval = FALSE, echo = TRUE}
+tar_read(results)
+#> # A tibble: 4 × 3
+#>   efficacy sample_size success
+#>   <chr>          <dbl>   <dbl>
+#> 1 null             700   0.021
+#> 2 null             800   0.027
+#> 3 strong           700   0.875
+#> 4 strong           800   0.906
+```
+
+* A sample size of 800 achieves 90% power while controlling type 1 error at 5%.
+
+##
+
+::: {style="font-size: 75%"}
+
+:::: {.columns}
+
+::: {.column width="50%"}
+
+### Problem
+
+<center>
+<img src="./images/slow.png" height="400px">
+</center>
+
+* Real simulations can take hours to run.
+* Targets run sequentially by default.
+
+:::
+
+::: {.column width="50%"}
+
+### Solution
+
+<center>
+<img src="./images/crew.png" height="400px">
+</center>
+
+* `crew`: a framework for asynchronous and distributed computing.
+* Plugs into `targets` pipelines to run steps in parallel.
+
+:::
+
+::::
+
+:::
+
+## A distributed worker launcher for asynchronous tasks {.smaller}
+
+<center>
+<img src="./images/crew.png" height="500px">
+</center>
+
+## Parallel/async tools before `crew` {.smaller}
+
+:::: {.columns}
+
+::: {.column width="70%"}
+* [`future`](https://future.futureverse.org/): unifying interface for distributed computing.
+* [`clustermq`](https://mschubert.github.io/clustermq): fast functional programming on computing clusters.
+* [`mirai`](https://github.com/shikokuchuo/mirai): fast task scheduler on the local network.
+* [`rrq`](https://github.com/mrc-ide/rrq): Redis-based task queue.
+* [`callr`](https://callr.r-lib.org/): manage individual external R processes.
+* [`promises`](https://rstudio.github.io/promises/): opinionated situation-specific asynchronous programming.
+* More listed at <https://CRAN.R-project.org/view=HighPerformanceComputing>.
+:::
+
+::: {.column width="30%"}
+![](./images/existing.png)
+:::
+
+::::
+
+## What is `crew`?
+
+:::: {.columns}
+
+::: {.column width="75%"}
+* [`mirai`](https://github.com/shikokuchuo/mirai) is a sleek and sophisticated task scheduler by [Charlie Gao](https://github.com/shikokuchuo).
+* [`mirai`](https://github.com/shikokuchuo/mirai) uses [NNG](https://nng.nanomsg.org/) via Charlie's [`nanonext`](https://github.com/shikokuchuo/nanonext) package to achieve incredible speed and scale.
+* The purpose of `crew` is to extend [`mirai`](https://github.com/shikokuchuo/mirai) to the full variety of computing platforms that can run parallel workers in a local network.
+:::
+
+::: {.column width="25%"}
+![](./images/mirai.png)
+:::
+
+::::
+
+
+## Why `crew`? {.smaller}
+
+:::: {.columns}
+
+::: {.column width="75%"}
+1. **Fast**
+    * `crew` is fast since [`mirai`](https://github.com/shikokuchuo/mirai) is asynchonous and ultra-efficient.
+2. **Frugal**
+    * `crew` launches new workers when the task load increases.
+    * Workers can exit when the task load decreases (e.g. configurable maximum idle time).
+3. **Friendly**
+    * `crew` manages all tasks and results from one central controller.
+    * Supports [controller groups](https://wlandau.github.io/crew/articles/controller_groups.html) with different types of workers.
+    * Users can write [launcher plugins](https://wlandau.github.io/crew/articles/launcher_plugins.html) for different platforms such as [traditional clusters](https://wlandau.github.io/crew.cluster/) and cloud computing services.
+    * Fits right into [`targets`](https://docs.ropensci.org/targets/) and [Shiny apps](https://wlandau.github.io/crew/articles/shiny.html).
+:::
+
+::: {.column width="25%"}
+![](./images/crew-stack.png)
+:::
+
+::::
+
+## `crew` interface {.smaller}
+
+:::: {.columns}
+
+::: {.column width="80%"}
+```{r, eval = FALSE, echo = TRUE}
+# Set up the session.
+library(crew)
+controller <- crew_controller_local(workers = 2, seconds_idle = 10)
+controller$start()
+
+# Submit a task.
+controller$push(name = "example", command = Sys.sleep(10))
+
+# Collect the result.
+while (is.null(result <- controller$pop())) Sys.sleep(0.001)
+print(result)
+#> # A tibble: 1 × 11
+#>   name    command       result    seconds      seed error trace warnings ...
+#>   <chr>   <chr>         <list>      <dbl>     <int> <chr> <chr> <chr>    ...
+#> 1 example Sys.sleep(10) <lgl [1]>    10.0 319445426 NA    NA    NA       ...
+
+# Terminate the controller, including the dispatcher process.
+controller$terminate()
+```
+:::
+
+::: {.column width="20%"}
+![](./images/crew.png)
+:::
+
+::::
+
+## Push or pop tasks at any time
+
+:::: {.columns}
+
+::: {.column width="75%"}
+```{r, eval = FALSE, echo = TRUE}
+run_task <- function(...) {...}
+
+index <- 0
+n_tasks <- 10000
+while (index < n_tasks || !controller$empty()) {
+  if (index < n_tasks) {
+    index <- index + 1
+    controller$push(
+      command = run_task(),
+      data = list(run_task = run_task)
+    )
+  }
+  result <- controller$pop()
+  print(result)
+}
+```
+:::
+
+::: {.column width="25%"}
+![](./images/crew.png)
+:::
+
+::::
+
+## `crew.cluster` & controller groups {.smaller}
+
+:::: {.columns}
+
+::: {.column width="75%"}
+```{r, eval = FALSE, echo = TRUE}
+# Local process controller
+local <- crew_controller_local(name = "name_local", workers = 2)
+
+# Sun Grid Engine controller
+sge <- crew.cluster::crew_controller_sge(
+  name = "name_sge",
+  seconds_launch = 60,
+  workers = 50,
+  sge_cores = 4,
+  sge_memory_gigabytes_required = 2L,
+  seconds_idle = 30,
+  seconds_exit = 2,
+  sge_log_output = "logs/",
+  script_lines = paste0("module load R/", getRversion())
+  verbose = TRUE
+)
+
+# Controller group
+controller <- crew_controller_group(local, sge)
+
+# Submit a task to whichever controller.
+controller$push(command = Sys.sleep(10))
+
+# Submit to a specific controller.
+controller$push(command = Sys.sleep(10), controller = "name_sge")
+```
+:::
+
+::: {.column width="25%"}
+![](./images/crew.cluster.png)
+:::
+
+::::
+
+## Custom launcher plugins {.smaller}
+
+:::: {.columns}
+
+::: {.column width="75%"}
+
+* A `crew` launcher is an [`R6`](https://r6.r-lib.org/) class that tells a `crew` controller how to launch parallel workers.
+* The [`crew.cluster`](https://wlandau.github.io/crew.cluster/) package has launcher plugins for traditional computing clusters such as SLURM, Sun Grid Engine, LSF, and PBS/TORQUE.
+* Users can write custom plugins for other platforms, such as cloud technologies like AWS Batch, Google Cloud Run, and Kubernetes.
+* Guide: <https://wlandau.github.io/crew/articles/launcher_plugins.html>.
+
+:::
+
+::: {.column width="25%"}
+![](./images/crew.cluster.png)
+:::
+
+::::
+
+## How to write a launcher plugin {.smaller}
+
+:::: {.columns}
+
+::: {.column width="85%"}
+
+* Guide: <https://wlandau.github.io/crew/articles/launcher_plugins.html>.
+* Write an [`R6`](https://r6.r-lib.org/) subclass of [`crew_class_launcher`](https://wlandau.github.io/crew/reference/crew_class_launcher.html) with methods [`launch_worker()`](https://wlandau.github.io/crew/reference/crew_class_launcher_local.html#method-launch-worker-) and [`terminate_worker()`](https://wlandau.github.io/crew/reference/crew_class_launcher_local.html#method-terminate-worker-).
+* Workers dial into the client IP address and port on the local network.
+* Example with local [`processx`](https://github.com/r-lib/processx) processes on non-Windows systems:
+
+```{r, eval = FALSE, echo = TRUE}
+custom_launcher_class <- R6::R6Class(
+  classname = "custom_launcher_class",
+  inherit = crew::crew_class_launcher,
+  public = list(
+    launch_worker = function(call, launcher, worker, instance) {
+      bin <- file.path(R.home("bin"), "R")
+      processx::process$new(
+        command = bin,
+        args = c("-e", call),
+        cleanup = FALSE
+      )
+    },
+    terminate_worker = function(handle) {
+      handle$kill()
+    }
+  )
+)
+```
+
+:::
+
+::: {.column width="15%"}
+![](./images/crew.png)
+:::
+
+::::
+
+## Controller object creator
+
+:::: {.columns style="font-size:60%"}
+
+::: {.column width="50%"}
+
+```{r, eval = FALSE, echo = TRUE, max.height = "1000px"}
+crew_controller_custom <- function(
+  name = "custom controller name",
+  workers = 1L,
+  host = NULL,
+  port = NULL,
+  tls_enable = FALSE,
+  tls_config = NULL,
+  seconds_interval = 0.5,
+  seconds_timeout = 10,
+  seconds_launch = 30,
+  seconds_idle = Inf,
+  seconds_wall = Inf,
+  seconds_exit = 1,
+  tasks_max = Inf,
+  tasks_timers = 0L,
+  reset_globals = TRUE,
+  reset_packages = FALSE,
+  reset_options = FALSE,
+  garbage_collection = FALSE
+) {
+  router <- crew::crew_router(
+    name = name,
+    workers = workers,
+    host = host,
+    port = port,
+    tls_enable = tls_enable,
+    tls_config = tls_config,
+    seconds_interval = seconds_interval,
+    seconds_timeout = seconds_timeout
+  )
+```
+
+:::
+
+::: {.column width="50%"}
+
+```{r, eval = FALSE, echo = TRUE, attr.source = '.numberLines startFrom="29"'}
+  launcher <- custom_launcher_class$new(
+    name = name,
+    seconds_launch = seconds_launch,
+    seconds_idle = seconds_idle,
+    seconds_wall = seconds_wall,
+    seconds_exit = seconds_exit,
+    tasks_max = tasks_max,
+    tasks_timers = tasks_timers,
+    reset_globals = reset_globals,
+    reset_packages = reset_packages,
+    reset_options = reset_options,
+    garbage_collection = garbage_collection
+  )
+  controller <- crew::crew_controller(
+    router = router,
+    launcher = launcher
+  )
+  controller$validate()
+  controller
+}
+```
+
+:::
+
+::::
+
+## Custom launcher plugin in action {.smaller}
+
+:::: {.columns}
+
+::: {.column width="80%"}
+```{r, eval = FALSE, echo = TRUE}
+# Create a controller with the launcher you defined.
+controller <- crew_controller_custom(workers = 2, seconds_idle = 10)
+
+# Start the controller, including the dispatcher process.
+controller$start()
+
+# Submit a task.
+controller$push(name = "example", command = Sys.sleep(10))
+
+# Collect the result.
+while (is.null(result <- controller$pop())) Sys.sleep(0.001)
+print(result)
+#> # A tibble: 1 × 11
+#>   name    command       result    seconds      seed error trace warnings ...
+#>   <chr>   <chr>         <list>      <dbl>     <int> <chr> <chr> <chr>    ...
+#> 1 example Sys.sleep(10) <lgl [1]>    10.0 319445426 NA    NA    NA       ...
+
+# Terminate the controller, including the dispatcher process.
+controller$terminate()
+```
+:::
+
+::: {.column width="20%"}
+![](./images/crew.png)
+:::
+
+::::
+
+## `crew` with Shiny {.smaller}
+
+:::: {.columns}
+
+::: {.column width="45%"}
+* Thanks to [Daniel Woodie](https://github.com/dwoodie) for sparking an early version of this app.
+* Click the button to submit a 5-second task.
+* Submit as many tasks as you like.
+* A time stamp refreshes every second (thanks to asynchronicity).
+* Each task creates a random [phyllotaxis](https://koenderks.github.io/aRtsy/reference/canvas_phyllotaxis.html) using the [`aRtsy`](https://koenderks.github.io/aRtsy/) package.
+:::
+
+::: {.column width="55%"}
+![](./images/app.png)
+:::
+
+::::
+
+## `crew` with Shiny: UI
+
+:::: {.columns style="font-size: 65%"}
+
+::: {.column width="77%"}
+```{r, eval = FALSE, echo = TRUE}
+# app.R file:
+library(crew)
+library(shiny)
+library(ggplot2)
+library(aRtsy)
+
+run_task <- function() {
+  Sys.sleep(5)
+  canvas_phyllotaxis(
+    colors = colorPalette(name = "random", n = 3),
+    iterations = 1000,
+    angle = runif(n = 1, min = - 2 * pi, max = 2 * pi),
+    size = 1,
+    p = 1
+  )
+}
+
+status_message <- function(number_tasks) {
+  paste(format(Sys.time()), "tasks in progress:", number_tasks)
+}
+
+ui <- fluidPage(
+  actionButton("task", "Submit a task (5 seconds)"),
+  textOutput("status"),
+  plotOutput("result")
+)
+```
+:::
+
+::: {.column width="23%"}
+![](./images/with-shiny.png)
+:::
+
+::::
+
+
+## `crew` with Shiny: server (1/2) {.smaller}
+
+:::: {.columns}
+
+::: {.column width="77%"}
+```{r, eval = FALSE, echo = TRUE, attr.source = '.numberLines startFrom="27"'}
+server <- function(input, output, session) {
+  # reactive values and outputs
+  reactive_result <- reactiveVal(ggplot())
+  reactive_status <- reactiveVal("No task submitted yet.")
+  reactive_poll <- reactiveVal(FALSE)
+  output$result <- renderPlot(reactive_result(), height = 600, width = 600)
+  output$status <- renderText(reactive_status())
+  
+  # crew controller
+  controller <- crew_controller_local(workers = 4, seconds_idle = 10)
+  controller$start()
+  onStop(function() controller$terminate())
+
+  # button to submit a task
+  observeEvent(input$task, {
+    controller$push(
+      command = run_task(),
+      data = list(run_task = run_task),
+      packages = "aRtsy"
+    )
+    reactive_poll(TRUE)
+  })
+```
+:::
+
+::: {.column width="23%"}
+![](./images/with-shiny.png)
+:::
+
+::::
+
+
+## `crew` with Shiny: server (2/2) {.smaller}
+
+:::: {.columns}
+
+::: {.column width="77%"}
+```{r, eval = FALSE, echo = TRUE, attr.source = '.numberLines startFrom="49"'}
+  # event loop to collect finished tasks
+  observe({
+    req(reactive_poll())
+    invalidateLater(millis = 100)
+    result <- controller$pop()$result
+    if (!is.null(result)) reactive_result(result[[1L]])
+    reactive_status(status_message(number_tasks = length(controller$queue)))
+    reactive_poll(!controller$empty())
+  })
+}
+
+shinyApp(ui = ui, server = server)
+```
+:::
+
+::: {.column width="23%"}
+![](./images/with-shiny.png)
+:::
+
+::::
+
+* Tutorial vignette: <https://wlandau.github.io/crew/articles/shiny.html>
+* Deployed app: <https://wlandau.shinyapps.io/crew-shiny>
+
+## `crew` parallelizes `targets` pipelines
+
+:::: {.columns}
+
+::: {.column width="77%"}
+* Implicit parallel computing.
+* Run conditionally independent targets in parallel as needed.
+* Automatically wait for upstream dependencies to finish.
+* The dependency graph governs these decisions.
+:::
+
+::: {.column width="23%"}
+![](./images/with-targets.png)
+:::
+
+::::
+
+## Dependency graph {.smaller}
+
+:::: {.columns}
+
+::: {.column width="77%"}
+
+```{r, eval = FALSE, echo = TRUE}
+tar_visnetwork()
+```
+
+<center>
+<img src="./images/graph-scaled.png" height="300px">
+</center>
+
+* Each square "pattern" target is a dynamic target with a simulation scenario.
+* Each simulation scenario has 25 dynamic branches.
+* Each dynamic branch runs 40 simulation replications.
+
+:::
+
+::: {.column width="23%"}
+![](./images/with-targets.png)
+:::
+
+::::
+
+## First target runs
+
+:::: {.columns}
+
+::: {.column width="77%"}
+
+<center>
+<img src="./images/progress1.png" height="400px">
+</center>
+
+:::
+
+::: {.column width="23%"}
+![](./images/with-targets.png)
+:::
+
+::::
+
+## Then simulations run in parallel
+
+:::: {.columns}
+
+::: {.column width="77%"}
+
+<center>
+<img src="./images/progress2.png" height="400px">
+</center>
+
+:::
+
+::: {.column width="23%"}
+![](./images/with-targets.png)
+:::
+
+::::
+
+## Then simulations aggregate
+
+:::: {.columns}
+
+::: {.column width="77%"}
+
+<center>
+<img src="./images/progress3.png" height="400px">
+</center>
+
+:::
+
+::: {.column width="23%"}
+![](./images/with-targets.png)
+:::
+
+::::
+
+## Then operating characteristics
+
+:::: {.columns}
+
+::: {.column width="77%"}
+
+<center>
+<img src="./images/progress4.png" height="400px">
+</center>
+
+:::
+
+::: {.column width="23%"}
+![](./images/with-targets.png)
+:::
+
+::::
+
+## Then the report
+
+:::: {.columns}
+
+::: {.column width="77%"}
+
+<center>
+<img src="./images/progress5.png" height="400px">
+</center>
+
+:::
+
+::: {.column width="23%"}
+![](./images/with-targets.png)
+:::
+
+::::
+
+## Pipeline done
+
+:::: {.columns}
+
+::: {.column width="77%"}
+
+<center>
+<img src="./images/progress6.png" height="400px">
+</center>
+
+:::
+
+::: {.column width="23%"}
+![](./images/with-targets.png)
+:::
+
+::::
+
+## How to use `crew` with `targets`
+
+:::: {.columns style="font-size: 90%;"}
+
+::: {.column width="75%"}
+1. Supply a `crew` controller in `_targets.R`.
+
+```{r, eval = FALSE, echo = TRUE}
+tar_option_set(controller = crew_controller_local(...))
+```
+
+2. Run the pipeline with [`tar_make()`](https://docs.ropensci.org/targets/reference/tar_make.html) in the R console.
+
+```{r, eval = FALSE, echo = TRUE}
+tar_make()
+```
+
+* Learn more at <https://books.ropensci.org/targets/crew.html>.
+
+:::
+
+::: {.column width="25%"}
+![](./images/with-targets.png)
+:::
+
+::::
+
+## `_targets.R` with `crew`
+
+:::: {.columns style="font-size:65%"}
+
+::: {.column width="48%"}
+
+```{r, eval = FALSE, echo = TRUE, `code-line-numbers`="8-11"}
+library(crew)
+library(targets)
+library(tarchetypes)
+library(tibble)
+
+tar_option_set(
+  packages = c("dplyr", "tibble"),
+  controller = crew_controller_local(
+    workers = 4,
+    seconds_idle = 30
+  )
+)
+
+scenarios <- tribble(
+  ~efficacy, ~mean_response_drug, ~sample_size,
+  "strong",   2,                   700,
+  "strong",   2,                   800,
+  "null",     1,                   700,
+  "null",     1,                   800
+)
+
+tar_source()
+```
+
+:::
+
+::: {.column width="52%"}
+
+```{r, eval = FALSE, echo = TRUE, attr.source = '.numberLines startFrom="23"'}
+list(
+  tar_map_rep(
+    name = simulations,
+    command = simulate_trial(
+      mean_response_drug = mean_response_drug,
+      sample_size = sample_size
+    ),
+    values = scenarios,
+    batches = 25, # branch targets per scenario
+    reps = 40, # reps per branch target,
+    names = all_of(c("efficacy", "sample_size")),
+    columns = all_of(c("efficacy", "sample_size"))
+  ),
+
+  tar_target(
+    name = results,
+    command = simulations %>%
+      group_by(efficacy, sample_size) %>%
+      summarize(success = mean(p_value < 0.05))
+  ),
+
+  tar_quarto(report, "report.qmd")
+)
+```
+
+:::
+
+::::
+
+## On a Sun Grid Engine (SGE) cluster
+
+:::: {.columns style="font-size:60%"}
+
+::: {.column width="48%"}
+
+```{r, eval = FALSE, echo = TRUE, `code-line-numbers`="8-19"}
+library(crew.cluster)
+library(targets)
+library(tarchetypes)
+library(tibble)
+
+tar_option_set(
+  packages = c("dplyr", "tibble"),
+  controller = crew_controller_sge(
+    seconds_launch = 60,
+    workers = 50,
+    sge_cores = 4,
+    sge_memory_gigabytes_required = 2L,
+    seconds_idle = 30,
+    sge_log_output = "logs/",
+    script_lines = paste0(
+      "module load R/",
+      getRversion()
+    )
+  )
+)
+
+scenarios <- tribble(
+  ~efficacy, ~mean_response_drug, ~sample_size,
+  "strong",   2,                   700,
+  "strong",   2,                   800,
+  "null",     1,                   700,
+  "null",     1,                   800
+)
+
+tar_source()
+```
+
+:::
+
+::: {.column width="52%"}
+
+```{r, eval = FALSE, echo = TRUE, attr.source = '.numberLines startFrom="31"'}
+list(
+  tar_map_rep(
+    name = simulations,
+    command = simulate_trial(
+      mean_response_drug = mean_response_drug,
+      sample_size = sample_size
+    ),
+    values = scenarios,
+    batches = 25, # branch targets per scenario
+    reps = 40, # reps per branch target,
+    names = all_of(c("efficacy", "sample_size")),
+    columns = all_of(c("efficacy", "sample_size"))
+  ),
+
+  tar_target(
+    name = results,
+    command = simulations %>%
+      group_by(efficacy, sample_size) %>%
+      summarize(success = mean(p_value < 0.05))
+  ),
+
+  tar_quarto(report, "report.qmd")
+)
+```
+
+:::
+
+::::
+
+## Help wanted {.smaller}
+
+<center>
+<img src="./images/plugins.png" height="400px">
+</center>
+
+* Looking for new `crew` launcher plugins for the cloud.
+* Plenty of room for AWS Batch, AWS Lambda, Google Cloud Run, Kubernetes, and beyond.
+* Guide: <https://wlandau.github.io/crew/articles/plugins.html>
+
+## Resources {.smaller}
+
+<br>
+
+#### Presentation
+
+* These slides: <https://wlandau.github.io/rpharma2023/index.html>
+* Slides source: <https://github.com/wlandau/rpharma2023>
+* Example pipeline code: <https://github.com/wlandau/rpharma2023-pipeline>
+
+#### Tools
+
+* `targets`: <https://docs.ropensci.org/targets/>
+* `targets` user manual: <https://books.ropensci.org/targets/>
+* `targets` with `crew`: <https://books.ropensci.org/targets/crew.html>
+* `crew`: <https://wlandau.github.io/crew/>
+
+## Special thanks {.smaller}
+
+* [`rOpenSci`](https://ropensci.org/) reviewed and adopted [`targets`](https://docs.ropensci.org/targets/) and [`tarchetypes`](https://docs.ropensci.org/tarchetypes/).
+* [Charlie Gao](https://github.com/shikokuchuo)
+    * Created [`mirai`](https://github.com/shikokuchuo/mirai) and [`nanonext`](https://github.com/shikokuchuo/nanonext), without which `crew` would not exist.
+    * Generously helped troubleshoot and plan in the development of `crew`.
+* Early contributions to `crew` and `crew.cluster`: [Charlie Gao](https://github.com/shikokuchuo), [Daniel Woodie](https://github.com/dwoodie), [Michael Gilbert](https://github.com/mglev1n).
+* Internal simulation tool developer team: [Richard Payne](https://github.com/rich-payne), [Eric Nantz](https://github.com/rpodcast), [Hollins Showalter](https://github.com/hdhshowalter-lilly), [Michael Sonksen](https://github.com/sonksen), [Daniel Woodie](https://github.com/dwoodie), [James Davis](https://github.com/jdavis-EliLilly).
+* Major influences: [Kirill Müller](https://github.com/krlmlr/), [Henrik Bengtsson](https://github.com/HenrikBengtsson), [Michael Schubert](https://github.com/mschubert), [David Kretch](https://github.com/davidkretch), [Adam Banker](https://github.com/adambanker), [Gábor Csárdi](https://github.com/gaborcsardi/).
