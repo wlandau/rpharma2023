@@ -1453,15 +1453,18 @@ Will Landau
 <section id="custom-launcher-plugins" class="slide level2 smaller">
 <h2>Custom launcher plugins</h2>
 <div class="columns">
-<div class="column" style="width:75%;">
+<div class="column" style="width:70%;">
 <ul>
 <li>A <code>crew</code> launcher is an <a href="https://r6.r-lib.org/"><code>R6</code></a> class that tells a <code>crew</code> controller how to launch parallel workers.</li>
-<li>The <a href="https://wlandau.github.io/crew.cluster/"><code>crew.cluster</code></a> package has launcher plugins for traditional computing clusters such as SLURM, Sun Grid Engine, LSF, and PBS/TORQUE.</li>
-<li>Users can write custom plugins for other platforms, such as cloud technologies like AWS Batch, Google Cloud Run, and Kubernetes.</li>
+<li>Users can write custom plugins for specific platforms and technologies such as Google Cloud Run, and Kubernetes.
+<ul>
+<li><a href="https://wlandau.github.io/crew.aws.batch"><code>crew.aws.batch</code></a> covers AWS Batch.</li>
+<li><a href="https://wlandau.github.io/crew.cluster/"><code>crew.cluster</code></a> covers SLURM, Sun Grid Engine, LSF, and PBS/TORQUE.</li>
+</ul></li>
 <li>Guide: <a href="https://wlandau.github.io/crew/articles/launcher_plugins.html" class="uri">https://wlandau.github.io/crew/articles/launcher_plugins.html</a>.</li>
 </ul>
-</div><div class="column" style="width:25%;">
-<p><img data-src="./images/crew.cluster.png"></p>
+</div><div class="column" style="width:30%;">
+<p><br> <img data-src="./images/plugins.png"></p>
 </div>
 </div>
 </section>

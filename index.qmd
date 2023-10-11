@@ -1219,17 +1219,19 @@ controller$push(command = Sys.sleep(10), controller = "name_sge")
 
 :::: {.columns}
 
-::: {.column width="75%"}
+::: {.column width="70%"}
 
 * A `crew` launcher is an [`R6`](https://r6.r-lib.org/) class that tells a `crew` controller how to launch parallel workers.
-* The [`crew.cluster`](https://wlandau.github.io/crew.cluster/) package has launcher plugins for traditional computing clusters such as SLURM, Sun Grid Engine, LSF, and PBS/TORQUE.
-* Users can write custom plugins for other platforms, such as cloud technologies like AWS Batch, Google Cloud Run, and Kubernetes.
+* Users can write custom plugins for specific platforms and technologies such as Google Cloud Run, and Kubernetes.
+    * [`crew.aws.batch`](https://wlandau.github.io/crew.aws.batch) covers AWS Batch.
+    * [`crew.cluster`](https://wlandau.github.io/crew.cluster/) covers SLURM, Sun Grid Engine, LSF, and PBS/TORQUE.
 * Guide: <https://wlandau.github.io/crew/articles/launcher_plugins.html>.
 
 :::
 
-::: {.column width="25%"}
-![](./images/crew.cluster.png)
+::: {.column width="30%"}
+<br>
+![](./images/plugins.png)
 :::
 
 ::::
