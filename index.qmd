@@ -348,7 +348,7 @@ simulate_trial(
 fs::dir_tree()
 #> .
 #> ├── _targets.R # Create with use_targets() and then modify by hand.
-#> ├── R
+#> ├── R/
 #> │   ├── analyze_dataset.R     # Write completely by hand.
 #> │   ├── simulate_dataset.R    # Write completely by hand.
 #> │   └── simulate_trial.R      # Write completely by hand.
