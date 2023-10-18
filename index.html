@@ -1510,7 +1510,7 @@ Will Landau
 <div class="cell" data-max.height="1000px">
 <div class="sourceCode cell-code" id="cb42"><pre class="sourceCode numberSource r number-lines code-with-copy"><code class="sourceCode r"><span id="cb42-1"><a href="#cb42-1"></a>crew_controller_custom <span class="ot">&lt;-</span> <span class="cf">function</span>(</span>
 <span id="cb42-2"><a href="#cb42-2"></a>  <span class="at">name =</span> <span class="st">"custom controller name"</span>,</span>
-<span id="cb42-3"><a href="#cb42-3"></a>  <span class="at">workers =</span> <span class="dv">1</span>,</span>
+<span id="cb42-3"><a href="#cb42-3"></a>  <span class="at">workers =</span> 1L,</span>
 <span id="cb42-4"><a href="#cb42-4"></a>  <span class="at">host =</span> <span class="cn">NULL</span>,</span>
 <span id="cb42-5"><a href="#cb42-5"></a>  <span class="at">port =</span> <span class="cn">NULL</span>,</span>
 <span id="cb42-6"><a href="#cb42-6"></a>  <span class="at">tls =</span> crew<span class="sc">::</span><span class="fu">crew_tls</span>(<span class="at">mode =</span> <span class="st">"automatic"</span>),</span>
@@ -1519,24 +1519,23 @@ Will Landau
 <span id="cb42-9"><a href="#cb42-9"></a>  <span class="at">seconds_launch =</span> <span class="dv">30</span>,</span>
 <span id="cb42-10"><a href="#cb42-10"></a>  <span class="at">seconds_idle =</span> <span class="cn">Inf</span>,</span>
 <span id="cb42-11"><a href="#cb42-11"></a>  <span class="at">seconds_wall =</span> <span class="cn">Inf</span>,</span>
-<span id="cb42-12"><a href="#cb42-12"></a>  <span class="at">seconds_exit =</span> <span class="dv">1</span>,</span>
-<span id="cb42-13"><a href="#cb42-13"></a>  <span class="at">tasks_max =</span> <span class="cn">Inf</span>,</span>
-<span id="cb42-14"><a href="#cb42-14"></a>  <span class="at">tasks_timers =</span> 0L,</span>
-<span id="cb42-15"><a href="#cb42-15"></a>  <span class="at">reset_globals =</span> <span class="cn">TRUE</span>,</span>
-<span id="cb42-16"><a href="#cb42-16"></a>  <span class="at">reset_packages =</span> <span class="cn">FALSE</span>,</span>
-<span id="cb42-17"><a href="#cb42-17"></a>  <span class="at">reset_options =</span> <span class="cn">FALSE</span>,</span>
-<span id="cb42-18"><a href="#cb42-18"></a>  <span class="at">garbage_collection =</span> <span class="cn">FALSE</span>,</span>
-<span id="cb42-19"><a href="#cb42-19"></a>  <span class="at">launch_max =</span> <span class="dv">5</span></span>
-<span id="cb42-20"><a href="#cb42-20"></a>) {</span>
-<span id="cb42-21"><a href="#cb42-21"></a>  router <span class="ot">&lt;-</span> crew<span class="sc">::</span><span class="fu">crew_router</span>(</span>
-<span id="cb42-22"><a href="#cb42-22"></a>    <span class="at">name =</span> name,</span>
-<span id="cb42-23"><a href="#cb42-23"></a>    <span class="at">workers =</span> workers,</span>
-<span id="cb42-24"><a href="#cb42-24"></a>    <span class="at">host =</span> host,</span>
-<span id="cb42-25"><a href="#cb42-25"></a>    <span class="at">port =</span> port,</span>
-<span id="cb42-26"><a href="#cb42-26"></a>    <span class="at">tls =</span> tls,</span>
-<span id="cb42-27"><a href="#cb42-27"></a>    <span class="at">seconds_interval =</span> seconds_interval,</span>
-<span id="cb42-28"><a href="#cb42-28"></a>    <span class="at">seconds_timeout =</span> seconds_timeout</span>
-<span id="cb42-29"><a href="#cb42-29"></a>  )</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb42-12"><a href="#cb42-12"></a>  <span class="at">tasks_max =</span> <span class="cn">Inf</span>,</span>
+<span id="cb42-13"><a href="#cb42-13"></a>  <span class="at">tasks_timers =</span> 0L,</span>
+<span id="cb42-14"><a href="#cb42-14"></a>  <span class="at">reset_globals =</span> <span class="cn">TRUE</span>,</span>
+<span id="cb42-15"><a href="#cb42-15"></a>  <span class="at">reset_packages =</span> <span class="cn">FALSE</span>,</span>
+<span id="cb42-16"><a href="#cb42-16"></a>  <span class="at">reset_options =</span> <span class="cn">FALSE</span>,</span>
+<span id="cb42-17"><a href="#cb42-17"></a>  <span class="at">garbage_collection =</span> <span class="cn">FALSE</span>,</span>
+<span id="cb42-18"><a href="#cb42-18"></a>  <span class="at">launch_max =</span> 5L</span>
+<span id="cb42-19"><a href="#cb42-19"></a>) {</span>
+<span id="cb42-20"><a href="#cb42-20"></a>  client <span class="ot">&lt;-</span> crew<span class="sc">::</span><span class="fu">crew_client</span>(</span>
+<span id="cb42-21"><a href="#cb42-21"></a>    <span class="at">name =</span> name,</span>
+<span id="cb42-22"><a href="#cb42-22"></a>    <span class="at">workers =</span> workers,</span>
+<span id="cb42-23"><a href="#cb42-23"></a>    <span class="at">host =</span> host,</span>
+<span id="cb42-24"><a href="#cb42-24"></a>    <span class="at">port =</span> port,</span>
+<span id="cb42-25"><a href="#cb42-25"></a>    <span class="at">tls =</span> tls,</span>
+<span id="cb42-26"><a href="#cb42-26"></a>    <span class="at">seconds_interval =</span> seconds_interval,</span>
+<span id="cb42-27"><a href="#cb42-27"></a>    <span class="at">seconds_timeout =</span> seconds_timeout</span>
+<span id="cb42-28"><a href="#cb42-28"></a>  )</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 </div><div class="column" style="width:50%;">
 <div class="cell">
@@ -1545,23 +1544,19 @@ Will Landau
 <span id="cb43-31"><a href="#cb43-31"></a>    <span class="at">seconds_launch =</span> seconds_launch,</span>
 <span id="cb43-32"><a href="#cb43-32"></a>    <span class="at">seconds_idle =</span> seconds_idle,</span>
 <span id="cb43-33"><a href="#cb43-33"></a>    <span class="at">seconds_wall =</span> seconds_wall,</span>
-<span id="cb43-34"><a href="#cb43-34"></a>    <span class="at">seconds_exit =</span> seconds_exit,</span>
-<span id="cb43-35"><a href="#cb43-35"></a>    <span class="at">tasks_max =</span> tasks_max,</span>
-<span id="cb43-36"><a href="#cb43-36"></a>    <span class="at">tasks_timers =</span> tasks_timers,</span>
-<span id="cb43-37"><a href="#cb43-37"></a>    <span class="at">reset_globals =</span> reset_globals,</span>
-<span id="cb43-38"><a href="#cb43-38"></a>    <span class="at">reset_packages =</span> reset_packages,</span>
-<span id="cb43-39"><a href="#cb43-39"></a>    <span class="at">reset_options =</span> reset_options,</span>
-<span id="cb43-40"><a href="#cb43-40"></a>    <span class="at">garbage_collection =</span> garbage_collection,</span>
-<span id="cb43-41"><a href="#cb43-41"></a>    <span class="at">launch_max =</span> launch_max,</span>
-<span id="cb43-42"><a href="#cb43-42"></a>    <span class="at">tls =</span> tls</span>
-<span id="cb43-43"><a href="#cb43-43"></a>  )</span>
-<span id="cb43-44"><a href="#cb43-44"></a>  controller <span class="ot">&lt;-</span> crew<span class="sc">::</span><span class="fu">crew_controller</span>(</span>
-<span id="cb43-45"><a href="#cb43-45"></a>    <span class="at">router =</span> router,</span>
-<span id="cb43-46"><a href="#cb43-46"></a>    <span class="at">launcher =</span> launcher</span>
-<span id="cb43-47"><a href="#cb43-47"></a>  )</span>
-<span id="cb43-48"><a href="#cb43-48"></a>  controller<span class="sc">$</span><span class="fu">validate</span>()</span>
-<span id="cb43-49"><a href="#cb43-49"></a>  controller</span>
-<span id="cb43-50"><a href="#cb43-50"></a><span class="er">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<span id="cb43-34"><a href="#cb43-34"></a>    <span class="at">tasks_max =</span> tasks_max,</span>
+<span id="cb43-35"><a href="#cb43-35"></a>    <span class="at">tasks_timers =</span> tasks_timers,</span>
+<span id="cb43-36"><a href="#cb43-36"></a>    <span class="at">reset_globals =</span> reset_globals,</span>
+<span id="cb43-37"><a href="#cb43-37"></a>    <span class="at">reset_packages =</span> reset_packages,</span>
+<span id="cb43-38"><a href="#cb43-38"></a>    <span class="at">reset_options =</span> reset_options,</span>
+<span id="cb43-39"><a href="#cb43-39"></a>    <span class="at">garbage_collection =</span> garbage_collection,</span>
+<span id="cb43-40"><a href="#cb43-40"></a>    <span class="at">launch_max =</span> launch_max,</span>
+<span id="cb43-41"><a href="#cb43-41"></a>    <span class="at">tls =</span> tls</span>
+<span id="cb43-42"><a href="#cb43-42"></a>  )</span>
+<span id="cb43-43"><a href="#cb43-43"></a>  controller <span class="ot">&lt;-</span> crew<span class="sc">::</span><span class="fu">crew_controller</span>(<span class="at">client =</span> client, <span class="at">launcher =</span> launcher)</span>
+<span id="cb43-44"><a href="#cb43-44"></a>  controller<span class="sc">$</span><span class="fu">validate</span>()</span>
+<span id="cb43-45"><a href="#cb43-45"></a>  controller</span>
+<span id="cb43-46"><a href="#cb43-46"></a><span class="er">}</span></span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 </div>
 </div>
 </div>
