@@ -1422,8 +1422,8 @@ run_task <- function() {
   )
 }
 
-status_message <- function(number_tasks) {
-  paste(format(Sys.time()), "tasks in progress:", number_tasks)
+status_message <- function(n) {
+  paste(format(Sys.time()), "tasks in progress:", n)
 }
 
 ui <- fluidPage(
@@ -1490,9 +1490,9 @@ server <- function(input, output, session) {
     req(reactive_poll())
     invalidateLater(millis = 100)
     result <- controller$pop()$result
-    if (!is.null(result)) reactive_result(result[[1L]])
-    reactive_status(status_message(number_tasks = length(controller$queue)))
-    reactive_poll(!controller$empty())
+    if (!is.null(result)) reactive_result(result[[1]])
+    reactive_status(status_message(n = length(controller$tasks)))
+    reactive_poll(controller$nonempty())
   })
 }
 

@@ -1634,8 +1634,8 @@ Will Landau
 <span id="cb45-15"><a href="#cb45-15"></a>  )</span>
 <span id="cb45-16"><a href="#cb45-16"></a>}</span>
 <span id="cb45-17"><a href="#cb45-17"></a></span>
-<span id="cb45-18"><a href="#cb45-18"></a>status_message <span class="ot">&lt;-</span> <span class="cf">function</span>(number_tasks) {</span>
-<span id="cb45-19"><a href="#cb45-19"></a>  <span class="fu">paste</span>(<span class="fu">format</span>(<span class="fu">Sys.time</span>()), <span class="st">"tasks in progress:"</span>, number_tasks)</span>
+<span id="cb45-18"><a href="#cb45-18"></a>status_message <span class="ot">&lt;-</span> <span class="cf">function</span>(n) {</span>
+<span id="cb45-19"><a href="#cb45-19"></a>  <span class="fu">paste</span>(<span class="fu">format</span>(<span class="fu">Sys.time</span>()), <span class="st">"tasks in progress:"</span>, n)</span>
 <span id="cb45-20"><a href="#cb45-20"></a>}</span>
 <span id="cb45-21"><a href="#cb45-21"></a></span>
 <span id="cb45-22"><a href="#cb45-22"></a>ui <span class="ot">&lt;-</span> <span class="fu">fluidPage</span>(</span>
@@ -1692,9 +1692,9 @@ Will Landau
 <span id="cb47-51"><a href="#cb47-51"></a>    <span class="fu">req</span>(<span class="fu">reactive_poll</span>())</span>
 <span id="cb47-52"><a href="#cb47-52"></a>    <span class="fu">invalidateLater</span>(<span class="at">millis =</span> <span class="dv">100</span>)</span>
 <span id="cb47-53"><a href="#cb47-53"></a>    result <span class="ot">&lt;-</span> controller<span class="sc">$</span><span class="fu">pop</span>()<span class="sc">$</span>result</span>
-<span id="cb47-54"><a href="#cb47-54"></a>    <span class="cf">if</span> (<span class="sc">!</span><span class="fu">is.null</span>(result)) <span class="fu">reactive_result</span>(result[[1L]])</span>
-<span id="cb47-55"><a href="#cb47-55"></a>    <span class="fu">reactive_status</span>(<span class="fu">status_message</span>(<span class="at">number_tasks =</span> <span class="fu">length</span>(controller<span class="sc">$</span>queue)))</span>
-<span id="cb47-56"><a href="#cb47-56"></a>    <span class="fu">reactive_poll</span>(<span class="sc">!</span>controller<span class="sc">$</span><span class="fu">empty</span>())</span>
+<span id="cb47-54"><a href="#cb47-54"></a>    <span class="cf">if</span> (<span class="sc">!</span><span class="fu">is.null</span>(result)) <span class="fu">reactive_result</span>(result[[<span class="dv">1</span>]])</span>
+<span id="cb47-55"><a href="#cb47-55"></a>    <span class="fu">reactive_status</span>(<span class="fu">status_message</span>(<span class="at">n =</span> <span class="fu">length</span>(controller<span class="sc">$</span>tasks)))</span>
+<span id="cb47-56"><a href="#cb47-56"></a>    <span class="fu">reactive_poll</span>(controller<span class="sc">$</span><span class="fu">nonempty</span>())</span>
 <span id="cb47-57"><a href="#cb47-57"></a>  })</span>
 <span id="cb47-58"><a href="#cb47-58"></a><span class="er">}</span></span>
 <span id="cb47-59"><a href="#cb47-59"></a></span>
