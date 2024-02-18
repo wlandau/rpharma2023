@@ -6,6 +6,7 @@ In clinical trial design, simulations are essential for evaluating potential des
 
 * Slides: <https://wlandau.github.io/rpharma2023>
 * Code: <https://github.com/wlandau/rpharma2023-pipeline>
+* Video: <https://youtu.be/cyF2dzloVLo?si=Bc0uXfuTQm96eiRt>
 
 # Resources
 
